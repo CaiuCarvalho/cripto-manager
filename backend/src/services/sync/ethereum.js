@@ -120,6 +120,13 @@ function determineType(tx, walletAddr) {
  * @returns {object}
  */
 function normalizeTx(tx, wallet, network, type) {
+  const blockNum = parseInt(tx.blockNumber, 10);
+  const timestamp = parseInt(tx.timeStamp, 10);
+
+  if (isNaN(blockNum) || isNaN(timestamp)) {
+    throw new Error(`Invalid tx data: blockNumber=${tx.blockNumber} timeStamp=${tx.timeStamp} hash=${tx.hash}`);
+  }
+
   return {
     wallet_id:          wallet.id,
     user_id:            wallet.user_id,
@@ -134,20 +141,23 @@ function normalizeTx(tx, wallet, network, type) {
     fee_usd:            null,   // enriched by orchestrator
     price_usd_at_time:  null,   // enriched by orchestrator
     value_usd:          null,   // enriched by orchestrator
-    block_number:       parseInt(tx.blockNumber, 10),
-    confirmed_at:       new Date(parseInt(tx.timeStamp, 10) * 1000).toISOString(),
+    block_number:       blockNum,
+    confirmed_at:       new Date(timestamp * 1000).toISOString(),
     raw_data:           tx,
   };
 }
 
 /**
  * Returns true if the transaction should be ignored (zero-value spam token transfers).
+ * Native transactions with value=0 are valid (contract calls), so they are never filtered.
  *
  * @param {object} tx - Raw tx from Etherscan.
+ * @param {boolean} isToken - True if this is a token transfer (tokentx), false for native (txlist).
  * @returns {boolean}
  */
-function isSpam(tx) {
-  return tx.value === '0' && !tx.tokenSymbol;
+function isSpam(tx, isToken = false) {
+  if (isToken && tx.value === '0') return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,7 +175,12 @@ function isSpam(tx) {
 async function getStartBlock(apiUrl, timestamp) {
   if (!timestamp) return 0;
 
-  const unixTs = Math.floor(new Date(timestamp).getTime() / 1000);
+  const parsed = new Date(timestamp);
+  if (isNaN(parsed.getTime())) {
+    logger.warn(`[EVM Sync] Invalid timestamp "${timestamp}" — defaulting to block 0`);
+    return 0;
+  }
+  const unixTs = Math.floor(parsed.getTime() / 1000);
 
   try {
     const response = await axios.get(apiUrl, {
@@ -199,6 +214,10 @@ async function getStartBlock(apiUrl, timestamp) {
  * @returns {Promise<{ txsFound: number, lastBlock: number }>}
  */
 async function syncWallet(wallet) {
+  if (!wallet || !wallet.id || !wallet.address || !wallet.network || !wallet.user_id) {
+    throw new Error(`Invalid wallet object: missing required fields. Got: ${JSON.stringify(Object.keys(wallet || {}))}`);
+  }
+
   const { id: walletId, user_id: userId, address, network: networkKey, last_synced_at } = wallet;
   const network = NETWORKS[networkKey];
 
@@ -252,7 +271,7 @@ async function syncWallet(wallet) {
   let lastBlock = startBlock;
 
   for (const tx of nativeTxs) {
-    if (isSpam(tx)) continue;
+    if (isSpam(tx, false)) continue;
 
     const type = determineType(tx, walletAddr);
     normalized.push(normalizeTx(tx, wallet, network, type));
@@ -262,7 +281,7 @@ async function syncWallet(wallet) {
   }
 
   for (const tx of tokenTxs) {
-    if (isSpam(tx)) continue;
+    if (isSpam(tx, true)) continue;
 
     const type = determineType(tx, walletAddr);
     normalized.push(normalizeTx(tx, wallet, network, type));

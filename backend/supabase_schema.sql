@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS transactions (
 
   CONSTRAINT transactions_type_check CHECK (
     type IN ('SEND', 'RECEIVE', 'SWAP', 'CONTRACT', 'STAKE')
-  )
+  ),
+  CONSTRAINT transactions_amount_positive CHECK (amount > 0)
 );
 
 COMMENT ON TABLE transactions IS
@@ -95,7 +96,8 @@ CREATE TABLE IF NOT EXISTS price_alerts (
 
   CONSTRAINT price_alerts_direction_check CHECK (
     direction IN ('ABOVE', 'BELOW')
-  )
+  ),
+  CONSTRAINT price_alerts_target_positive CHECK (target_price > 0)
 );
 
 COMMENT ON TABLE price_alerts IS
@@ -154,6 +156,17 @@ CREATE INDEX IF NOT EXISTS idx_transactions_type
 
 CREATE INDEX IF NOT EXISTS idx_transactions_token_symbol
   ON transactions (token_symbol);
+
+-- Composite indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_transactions_user_confirmed
+  ON transactions (user_id, confirmed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_user_token_confirmed
+  ON transactions (user_id, token_symbol, confirmed_at DESC);
+
+-- Fast lookup by tx_hash without wallet_id
+CREATE INDEX IF NOT EXISTS idx_transactions_tx_hash
+  ON transactions (tx_hash);
 
 -- price_alerts
 CREATE INDEX IF NOT EXISTS idx_price_alerts_user_id_active

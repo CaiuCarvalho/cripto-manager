@@ -15,9 +15,18 @@ function errorHandler(err, req, res, next) {
   const statusCode = err.statusCode || err.status || 500;
   const message = err.message || 'Internal Server Error';
 
+  const SENSITIVE_FIELDS = ['password', 'token', 'secret', 'key', 'private'];
+  const sanitizedBody = env.isProduction
+    ? Object.fromEntries(
+        Object.entries(req.body || {}).filter(
+          ([k]) => !SENSITIVE_FIELDS.some(f => k.toLowerCase().includes(f))
+        )
+      )
+    : req.body;
+
   logger.error(`[${req.method}] ${req.path} — ${statusCode} ${message}`, {
     stack: err.stack,
-    body: req.body,
+    body: sanitizedBody,
     params: req.params,
     query: req.query,
   });

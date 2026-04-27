@@ -29,23 +29,39 @@ const currentPriceCache = new Map();   // key: sorted ids string → { data, exp
 const historicalPriceCache = new Map(); // key: "SYMBOL_dd-mm-yyyy" → { data, expiresAt }
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
-let lastRequestAt = 0;
 const MIN_REQUEST_INTERVAL = 200; // ms between requests (free tier: ~10-30 req/min)
+let rateLimitChain = Promise.resolve();
 
-async function enforceRateLimit() {
-  const now = Date.now();
-  const elapsed = now - lastRequestAt;
-  if (elapsed < MIN_REQUEST_INTERVAL) {
-    await new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_INTERVAL - elapsed));
+function enforceRateLimit() {
+  rateLimitChain = rateLimitChain.then(() =>
+    new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_INTERVAL))
+  );
+  return rateLimitChain;
+}
+
+// ─── Cache helpers ────────────────────────────────────────────────────────────
+function getFromCache(cache, key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key);
+    return null;
   }
-  lastRequestAt = Date.now();
+  return entry.value;
+}
+
+function setInCache(cache, key, value, ttlMs) {
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
 }
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
 function buildHeaders() {
   const headers = { Accept: 'application/json' };
   if (env.coingeckoApiKey) {
-    headers['x-cg-demo-api-key'] = env.coingeckoApiKey;
+    const headerName = BASE_URL.includes('pro-api')
+      ? 'x-cg-pro-api-key'
+      : 'x-cg-demo-api-key';
+    headers[headerName] = env.coingeckoApiKey;
   }
   return headers;
 }
@@ -87,10 +103,10 @@ async function getCurrentPrices(symbols) {
 
   // Build a stable cache key from sorted ids
   const cacheKey = ids.slice().sort().join(',');
-  const cached = currentPriceCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) {
+  const cached = getFromCache(currentPriceCache, cacheKey);
+  if (cached) {
     logger.debug(`CoinGecko: cache hit for current prices [${cacheKey}]`);
-    return cached.data;
+    return cached;
   }
 
   try {
@@ -111,7 +127,7 @@ async function getCurrentPrices(symbols) {
       };
     }
 
-    currentPriceCache.set(cacheKey, { data: result, expiresAt: Date.now() + CURRENT_PRICE_TTL });
+    setInCache(currentPriceCache, cacheKey, result, CURRENT_PRICE_TTL);
     logger.debug(`CoinGecko: fetched current prices for [${cacheKey}]`);
     return result;
   } catch (err) {
@@ -143,10 +159,10 @@ async function getHistoricalPrice(symbol, date) {
   const dateStr = `${dd}-${mm}-${yyyy}`;
 
   const cacheKey = `${sym}_${dateStr}`;
-  const cached = historicalPriceCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) {
+  const cached = getFromCache(historicalPriceCache, cacheKey);
+  if (cached !== null) {
     logger.debug(`CoinGecko: cache hit for historical price [${cacheKey}]`);
-    return cached.data;
+    return cached;
   }
 
   try {
@@ -156,7 +172,7 @@ async function getHistoricalPrice(symbol, date) {
     });
 
     const price = raw?.market_data?.current_price?.usd ?? null;
-    historicalPriceCache.set(cacheKey, { data: price, expiresAt: Date.now() + HISTORICAL_PRICE_TTL });
+    setInCache(historicalPriceCache, cacheKey, price, HISTORICAL_PRICE_TTL);
     logger.debug(`CoinGecko: historical price for ${sym} on ${dateStr} = ${price}`);
     return price;
   } catch (err) {
@@ -174,6 +190,7 @@ async function getHistoricalPrice(symbol, date) {
  * @returns {number|null}
  */
 async function getPriceAtTimestamp(symbol, timestamp) {
+  if (!timestamp || isNaN(Number(timestamp))) return null;
   // Normalise: if timestamp looks like seconds (< year 3000 in ms), convert to ms
   const ms = timestamp < 1e12 ? timestamp * 1000 : timestamp;
   const date = new Date(ms);

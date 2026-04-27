@@ -46,6 +46,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+const pricesRouter = require('./routes/prices');
+app.use('/api/prices', pricesRouter);
 app.use('/api', authMiddleware, routes);
 
 // ─── 404 handler ─────────────────────────────────────────────────────────────

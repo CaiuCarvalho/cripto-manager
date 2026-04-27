@@ -1,23 +1,10 @@
 const { Router } = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const { wrap } = require('../utils/asyncWrapper');
-const env = require('../config/env');
+const { userClient } = require('../utils/supabaseClient');
 
 const router = Router();
 
 const VALID_NETWORKS = ['ETH', 'BTC', 'SOL', 'BSC', 'MATIC', 'AVAX', 'ARB', 'OP'];
-
-/**
- * Returns a Supabase client authenticated with the user's bearer token so that
- * row-level security policies are enforced correctly.
- */
-function userClient(req) {
-  const token = req.headers['authorization'].slice(7);
-  return createClient(env.supabaseUrl, env.supabaseAnonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-  });
-}
 
 /**
  * Attempts to guess the network from the wallet address format when the caller

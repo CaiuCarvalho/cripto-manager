@@ -5,7 +5,9 @@ const rateLimit = require('express-rate-limit');
 
 const env = require('./config/env');
 const logger = require('./utils/logger');
+const authMiddleware = require('./middleware/auth');
 const errorHandler = require('./middleware/errorHandler');
+const routes = require('./routes');
 
 const app = express();
 
@@ -44,10 +46,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// TODO: mount feature routes here as they are implemented
-// app.use('/api/accounts', require('./routes/accounts'));
-// app.use('/api/transactions', require('./routes/transactions'));
-// app.use('/api/prices', require('./routes/prices'));
+app.use('/api', authMiddleware, routes);
 
 // ─── 404 handler ─────────────────────────────────────────────────────────────
 app.use((req, res) => {

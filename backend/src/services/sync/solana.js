@@ -286,8 +286,15 @@ async function syncWallet(wallet) {
 
   logger.info(`[SOL Sync] Wallet ${walletId}: ${splTransfers.length} SPL token transfers collected.`);
 
-  // 5. Merge and deduplicate by tx_hash (prefer first occurrence)
-  const allNormalized = [...solTransfers, ...splTransfers];
+  // 5. Merge and deduplicate by tx_hash (prefer first occurrence — SOL over SPL)
+  const seen = new Set();
+  const allNormalized = [];
+  for (const tx of [...solTransfers, ...splTransfers]) {
+    if (!seen.has(tx.tx_hash)) {
+      seen.add(tx.tx_hash);
+      allNormalized.push(tx);
+    }
+  }
 
   logger.info(
     `[SOL Sync] Wallet ${walletId}: ${allNormalized.length} total transfers after merge ` +

@@ -47,7 +47,9 @@ export default function WalletsPage() {
     setSyncing((prev) => ({ ...prev, [id]: true }));
     try {
       await api.post(`/api/sync/wallet/${id}`);
-    } catch {
+      await fetchWallets();
+    } catch (err) {
+      console.error('handleSync:', err);
       alert('Erro ao sincronizar a carteira. Tente novamente.');
     } finally {
       setSyncing((prev) => ({ ...prev, [id]: false }));

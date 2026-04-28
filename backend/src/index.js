@@ -8,6 +8,7 @@ const logger = require('./utils/logger');
 const authMiddleware = require('./middleware/auth');
 const errorHandler = require('./middleware/errorHandler');
 const routes = require('./routes');
+const { startCronJobs } = require('./services/cron');
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use(errorHandler);
 app.listen(env.port, () => {
   logger.info(`Server running on port ${env.port} [${env.nodeEnv}]`);
   logger.info(`CORS origin: ${env.frontendUrl}`);
+  startCronJobs();
 });
 
 module.exports = app;

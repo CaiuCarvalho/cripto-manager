@@ -157,9 +157,11 @@ function normalizeTx(tx, wallet, type, netValue) {
     token_symbol:      'BTC',
     token_address:     null,
     amount:            Math.abs(netValue) / 1e8,   // satoshis → BTC
-    from_address:      Array.isArray(tx.inputs) && tx.inputs[0]?.prev_out?.addr
-      ? tx.inputs[0].prev_out.addr
-      : null,
+    from_address:      type === 'SEND'
+      ? wallet.address
+      : (Array.isArray(tx.inputs) && tx.inputs[0]?.prev_out?.addr
+        ? tx.inputs[0].prev_out.addr
+        : null),
     to_address:        toAddress,
     fee_native:        fee / 1e8,
     fee_usd:           null,   // enriched by orchestrator

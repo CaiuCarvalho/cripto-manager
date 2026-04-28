@@ -66,9 +66,11 @@ async function checkAlerts() {
   }
 
   // 4. For each triggered alert, fetch user email and send notification
+  // Only track IDs where email was successfully sent — others stay active for retry
+  const notifiedIds = [];
+
   for (const alert of triggeredAlerts) {
     try {
-      // Fetch user email from auth.users via admin client
       const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(
         alert.user_id
       );
@@ -98,18 +100,21 @@ async function checkAlerts() {
       logger.info(
         `[AlertChecker] Email sent to ${userEmail} — ${symbol} at $${formattedPrice} (direction: ${alert.direction}, target: $${alert.target_price})`
       );
+      notifiedIds.push(alert.id);
     } catch (emailErr) {
       logger.error(
-        `[AlertChecker] Failed to send email for alert ${alert.id}: ${emailErr.message}`
+        `[AlertChecker] Failed to send email for alert ${alert.id}: ${emailErr.message} — alert stays active for retry`
       );
     }
   }
 
-  // 5. Mark triggered alerts as inactive
+  if (notifiedIds.length === 0) return;
+
+  // 5. Mark only successfully notified alerts as inactive
   const { error: updateError } = await supabaseAdmin
     .from('price_alerts')
     .update({ active: false, triggered_at: new Date().toISOString() })
-    .in('id', triggeredIds);
+    .in('id', notifiedIds);
 
   if (updateError) {
     logger.error(`[AlertChecker] Failed to update triggered alerts: ${updateError.message}`);

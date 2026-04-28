@@ -2,6 +2,7 @@
 
 const cron = require('node-cron');
 const { syncAllWallets } = require('./sync');
+const { checkAlerts } = require('./alertChecker');
 const logger = require('../utils/logger');
 
 function startCronJobs() {
@@ -16,7 +17,17 @@ function startCronJobs() {
     }
   });
 
-  logger.info('[Cron] Cron jobs scheduled: wallet sync every 5 minutes');
+  // Verificação de alertas de preço a cada 2 minutos
+  cron.schedule('*/2 * * * *', async () => {
+    logger.info('[Cron] Checking price alerts...');
+    try {
+      await checkAlerts();
+    } catch (err) {
+      logger.error(`[Cron] Alert check failed: ${err.message}`);
+    }
+  });
+
+  logger.info('[Cron] Cron jobs scheduled: wallet sync every 5 minutes, alert check every 2 minutes');
 }
 
 module.exports = { startCronJobs };

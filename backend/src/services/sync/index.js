@@ -58,7 +58,7 @@ async function syncWalletWithEnrichment(wallet) {
     .insert({
       wallet_id: walletId,
       status: 'PARTIAL',
-      started_at: new Date().toISOString(),
+      txs_found: 0,
     })
     .select()
     .single();
@@ -81,7 +81,7 @@ async function syncWalletWithEnrichment(wallet) {
     if (syncLogId) {
       await supabaseAdmin
         .from('sync_logs')
-        .update({ status: 'ERROR', finished_at: new Date().toISOString(), error_message: err.message })
+        .update({ status: 'ERROR', error_message: err.message, synced_at: new Date().toISOString() })
         .eq('id', syncLogId);
     }
 
@@ -103,7 +103,7 @@ async function syncWalletWithEnrichment(wallet) {
       .update({
         status: 'SUCCESS',
         txs_found: txsFound,
-        finished_at: new Date().toISOString(),
+        synced_at: new Date().toISOString(),
       })
       .eq('id', syncLogId);
 
@@ -151,7 +151,15 @@ async function enrichTransactions(walletId) {
     await Promise.all(
       batch.map(async (tx) => {
         try {
+          if (!tx.confirmed_at) {
+            logger.warn(`[Sync Orchestrator] Skipping price enrichment for tx ${tx.id}: no confirmed_at`);
+            return;
+          }
           const timestamp = new Date(tx.confirmed_at).getTime();
+          if (isNaN(timestamp)) {
+            logger.warn(`[Sync Orchestrator] Invalid confirmed_at for tx ${tx.id}: ${tx.confirmed_at}`);
+            return;
+          }
           const price = await getPriceAtTimestamp(tx.token_symbol, timestamp);
 
           if (price == null) {

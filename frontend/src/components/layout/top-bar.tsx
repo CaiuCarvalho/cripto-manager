@@ -4,6 +4,7 @@ const PAGE_TITLES: Record<string, { subtitle: string; title: string }> = {
   transactions: { subtitle: 'Histórico', title: 'Transações' },
   market:       { subtitle: 'Acompanhamento', title: 'Mercado' },
   alerts:       { subtitle: 'Configurações', title: 'Alertas' },
+  'private-keys': { subtitle: 'Armazenamento seguro', title: 'Chaves Privadas' },
 };
 
 interface TopBarProps {

@@ -6,19 +6,21 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { TopBar } from '@/components/layout/top-bar';
 
 function pathnameToScreen(pathname: string): string {
-  if (pathname.startsWith('/wallets'))      return 'holdings';
-  if (pathname.startsWith('/transactions')) return 'transactions';
-  if (pathname.startsWith('/alerts'))       return 'alerts';
-  if (pathname.startsWith('/market'))       return 'market';
+  if (pathname.startsWith('/wallets'))       return 'holdings';
+  if (pathname.startsWith('/transactions'))  return 'transactions';
+  if (pathname.startsWith('/alerts'))        return 'alerts';
+  if (pathname.startsWith('/market'))        return 'market';
+  if (pathname.startsWith('/private-keys'))  return 'private-keys';
   return 'dashboard';
 }
 
 const SCREEN_ROUTES: Record<string, string> = {
-  dashboard:    '/dashboard',
-  holdings:     '/wallets',
-  transactions: '/transactions',
-  market:       '/market',
-  alerts:       '/alerts',
+  dashboard:      '/dashboard',
+  holdings:       '/wallets',
+  transactions:   '/transactions',
+  market:         '/market',
+  alerts:         '/alerts',
+  'private-keys': '/private-keys',
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

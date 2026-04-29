@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { id: 'transactions', label: 'Transações' },
   { id: 'market',       label: 'Mercado' },
   { id: 'alerts',       label: 'Alertas' },
+  { id: 'private-keys', label: 'Chaves privadas' },
 ];
 
 function NavIcon({ id }: { id: string }) {
@@ -33,6 +34,8 @@ function NavIcon({ id }: { id: string }) {
     return <svg {...props}><path d="M3 17l5-5 4 4 8-9"/><path d="M14 7h6v6"/></svg>;
   if (id === 'alerts')
     return <svg {...props}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9"/><path d="M10 21h4"/></svg>;
+  if (id === 'private-keys')
+    return <svg {...props}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
   return null;
 }
 

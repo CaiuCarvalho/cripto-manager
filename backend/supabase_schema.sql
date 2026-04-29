@@ -246,6 +246,63 @@ CREATE POLICY "sync_logs_select_own" ON sync_logs
 -- service_role bypasses RLS automatically in Supabase, so no explicit
 -- INSERT/UPDATE/DELETE policies are needed for the backend admin client.
 
+-- ---------------------------------------------------------------------------
+-- 7. TABLE: private_keys
+-- ---------------------------------------------------------------------------
+-- Private keys are NEVER stored in plaintext. The backend encrypts each key
+-- with AES-256-GCM before inserting; only ciphertext, nonce and auth tag are
+-- persisted here. The ENCRYPTION_KEY lives exclusively in the server env.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS private_keys (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  wallet_id        UUID        REFERENCES wallets(id) ON DELETE SET NULL,
+  label            TEXT        NOT NULL,
+  network          TEXT        NOT NULL,
+  encrypted_key    TEXT        NOT NULL,
+  iv               TEXT        NOT NULL,
+  auth_tag         TEXT        NOT NULL,
+  enc_version      INTEGER     NOT NULL DEFAULT 1,
+  last_accessed_at TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT private_keys_network_check CHECK (
+    network IN ('ETH', 'BTC', 'SOL', 'BSC', 'MATIC', 'AVAX', 'ARB', 'OP')
+  )
+);
+
+COMMENT ON TABLE private_keys IS
+  'Encrypted private keys. Ciphertext produced by AES-256-GCM on the backend; plaintext never reaches the database.';
+
+COMMENT ON COLUMN private_keys.encrypted_key    IS 'Base64-encoded AES-256-GCM ciphertext of the private key.';
+COMMENT ON COLUMN private_keys.iv               IS 'Base64-encoded 12-byte random nonce used for this encryption operation.';
+COMMENT ON COLUMN private_keys.auth_tag         IS 'Base64-encoded 16-byte GCM authentication tag; verifies integrity on decrypt.';
+COMMENT ON COLUMN private_keys.enc_version      IS 'Encryption key version, incremented during key rotation to identify which ENCRYPTION_KEY was used.';
+COMMENT ON COLUMN private_keys.last_accessed_at IS 'Timestamp of the most recent successful decryption request.';
+
+CREATE INDEX IF NOT EXISTS idx_private_keys_user_id
+  ON private_keys (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_private_keys_wallet_id
+  ON private_keys (wallet_id);
+
+-- ---- private_keys RLS ------------------------------------------------------
+ALTER TABLE private_keys ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "private_keys_select_own" ON private_keys
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "private_keys_insert_own" ON private_keys
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "private_keys_update_own" ON private_keys
+  FOR UPDATE USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "private_keys_delete_own" ON private_keys
+  FOR DELETE USING (auth.uid() = user_id);
+
 COMMIT;
 
 -- =============================================================================
@@ -254,6 +311,7 @@ COMMIT;
 --
 -- BEGIN;
 --
+-- DROP TABLE IF EXISTS private_keys   CASCADE;
 -- DROP TABLE IF EXISTS sync_logs      CASCADE;
 -- DROP TABLE IF EXISTS price_alerts   CASCADE;
 -- DROP TABLE IF EXISTS transactions   CASCADE;

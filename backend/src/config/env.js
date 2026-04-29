@@ -29,6 +29,9 @@ const env = {
 
   // Email
   resendApiKey: process.env.RESEND_API_KEY,
+
+  // Private key encryption (AES-256-GCM) — must be 64 hex chars (32 bytes)
+  encryptionKey: process.env.ENCRYPTION_KEY,
 };
 
 // Validate required variables
@@ -36,6 +39,7 @@ const required = [
   'supabaseUrl',
   'supabaseAnonKey',
   'supabaseServiceRoleKey',
+  'encryptionKey',
 ];
 
 const missing = required.filter((key) => !env[key]);

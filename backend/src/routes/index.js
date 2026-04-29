@@ -5,6 +5,7 @@ const transactionsRouter = require('./transactions');
 const syncRouter = require('./sync');
 const portfolioRouter = require('./portfolio');
 const alertsRouter = require('./alerts');
+const privateKeysRouter = require('./privateKeys');
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/transactions', transactionsRouter);
 router.use('/sync', syncRouter);
 router.use('/portfolio', portfolioRouter);
 router.use('/alerts', alertsRouter);
+router.use('/private-keys', privateKeysRouter);
 
 module.exports = router;

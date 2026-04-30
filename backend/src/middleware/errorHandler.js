@@ -32,7 +32,8 @@ function errorHandler(err, req, res, next) {
   });
 
   const response = {
-    error: statusCode >= 500 ? 'Internal Server Error' : message,
+    error: true,
+    message: statusCode >= 500 && env.isProduction ? 'Internal Server Error' : message,
     statusCode,
   };
 

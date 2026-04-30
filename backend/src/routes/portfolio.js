@@ -126,6 +126,27 @@ router.get(
     const since = new Date();
     since.setDate(since.getDate() - days);
 
+    // Calculate portfolio value that existed before the requested window
+    // so that the chart starts from the correct baseline, not zero.
+    const { data: baseTxs, error: baseError } = await db
+      .from('transactions')
+      .select('type, value_usd')
+      .eq('user_id', req.user.id)
+      .lt('confirmed_at', since.toISOString());
+
+    if (baseError) {
+      const err = new Error(baseError.message);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    let baseValue = 0;
+    for (const tx of baseTxs || []) {
+      const val = parseFloat(tx.value_usd) || 0;
+      if (tx.type === 'RECEIVE') baseValue += val;
+      else if (tx.type === 'SEND') baseValue -= val;
+    }
+
     // Fetch transactions ordered by confirmed_at ASC within the time window
     const { data: transactions, error: txError } = await db
       .from('transactions')
@@ -156,9 +177,9 @@ router.get(
       }
     }
 
-    // Build cumulative history sorted by date
+    // Build cumulative history sorted by date, starting from the pre-window baseline
     const sortedDates = Object.keys(dailyDelta).sort();
-    let cumulative = 0;
+    let cumulative = baseValue;
     const history = sortedDates.map((date) => {
       cumulative += dailyDelta[date];
       return { date, valueUsd: cumulative };

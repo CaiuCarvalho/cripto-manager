@@ -6,6 +6,26 @@ const router = Router();
 
 const VALID_NETWORKS = ['ETH', 'BTC', 'SOL', 'BSC', 'MATIC', 'AVAX', 'ARB', 'OP'];
 
+const EVM_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+const BTC_ADDRESS_RE = /^(bc1[a-z0-9]{6,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
+const SOL_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+const ADDRESS_VALIDATORS = {
+  ETH:   (a) => EVM_ADDRESS_RE.test(a),
+  BSC:   (a) => EVM_ADDRESS_RE.test(a),
+  MATIC: (a) => EVM_ADDRESS_RE.test(a),
+  AVAX:  (a) => EVM_ADDRESS_RE.test(a),
+  ARB:   (a) => EVM_ADDRESS_RE.test(a),
+  OP:    (a) => EVM_ADDRESS_RE.test(a),
+  BTC:   (a) => BTC_ADDRESS_RE.test(a),
+  SOL:   (a) => SOL_ADDRESS_RE.test(a),
+};
+
+function validateAddress(address, network) {
+  const validator = ADDRESS_VALIDATORS[network];
+  return validator ? validator(address) : true;
+}
+
 /**
  * Attempts to guess the network from the wallet address format when the caller
  * did not supply one explicitly.
@@ -13,9 +33,9 @@ const VALID_NETWORKS = ['ETH', 'BTC', 'SOL', 'BSC', 'MATIC', 'AVAX', 'ARB', 'OP'
 function detectNetwork(address) {
   if (!address) return null;
   if (address.startsWith('0x')) return 'ETH';
+  // Check BTC prefixes before the generic base58 regex to avoid false SOL matches
   if (address.startsWith('bc1') || address.startsWith('1') || address.startsWith('3')) return 'BTC';
-  // Base58 addresses are 25-34 chars for BTC legacy, but Solana uses 32-44 chars
-  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return 'SOL';
+  if (SOL_ADDRESS_RE.test(address)) return 'SOL';
   return null;
 }
 
@@ -70,6 +90,12 @@ router.post(
       const err = new Error(
         `Invalid network. Must be one of: ${VALID_NETWORKS.join(', ')}`
       );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!validateAddress(address, network)) {
+      const err = new Error(`Invalid address format for network ${network}`);
       err.statusCode = 400;
       throw err;
     }

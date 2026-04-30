@@ -3,6 +3,7 @@ const env = require('../config/env');
 const logger = require('../utils/logger');
 
 // ─── Symbol → CoinGecko ID map ───────────────────────────────────────────────
+// Call registerSymbol() at startup or when new tokens are encountered.
 const SYMBOL_TO_ID = {
   BTC: 'bitcoin',
   ETH: 'ethereum',
@@ -15,6 +16,22 @@ const SYMBOL_TO_ID = {
   USDT: 'tether',
   USDC: 'usd-coin',
 };
+
+/**
+ * Registers a new symbol → CoinGecko ID mapping at runtime.
+ * Useful for tokens not in the default list.
+ *
+ * @param {string} symbol    - Token symbol, e.g. 'LINK'.
+ * @param {string} geckoId   - CoinGecko coin ID, e.g. 'chainlink'.
+ */
+function registerSymbol(symbol, geckoId) {
+  if (!symbol || !geckoId) return;
+  const sym = symbol.toUpperCase();
+  if (!SYMBOL_TO_ID[sym]) {
+    SYMBOL_TO_ID[sym] = geckoId;
+    logger.info(`CoinGecko: registered new symbol mapping ${sym} → ${geckoId}`);
+  }
+}
 
 // ─── Base URL ─────────────────────────────────────────────────────────────────
 const BASE_URL = env.coingeckoApiKey
@@ -201,5 +218,6 @@ module.exports = {
   getCurrentPrices,
   getHistoricalPrice,
   getPriceAtTimestamp,
+  registerSymbol,
   SYMBOL_TO_ID,
 };

@@ -28,6 +28,14 @@ const NETWORKS = {
   OP:   { apiUrl: 'https://api-optimistic.etherscan.io/api', nativeSymbol: 'ETH',   chainId: 10 },
 };
 
+// Moralis chain identifiers for each network
+const MORALIS_CHAIN_IDS = {
+  ETH: '0x1', BSC: '0x38', MATIC: '0x89',
+  AVAX: '0xa86a', ARB: '0xa4b1', OP: '0xa',
+};
+
+const MORALIS_API_BASE = 'https://deep-index.moralis.io/api/v2.2';
+
 const RATE_LIMIT_MESSAGE = 'Max rate limit reached';
 const RETRY_DELAY_MS = 1000;
 
@@ -161,6 +169,104 @@ function isSpam(tx, isToken = false) {
 }
 
 // ---------------------------------------------------------------------------
+// Moralis fallback
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalizes a raw Moralis transaction into the DB schema format.
+ * Moralis uses ISO timestamps and decimal value strings (in wei).
+ */
+function normalizeMoralisTx(tx, wallet, network) {
+  const blockNum = parseInt(tx.block_number, 10);
+  const timestamp = tx.block_timestamp
+    ? Math.floor(new Date(tx.block_timestamp).getTime() / 1000)
+    : 0;
+
+  if (isNaN(blockNum) || !timestamp) {
+    throw new Error(`Invalid Moralis tx: block_number=${tx.block_number} hash=${tx.hash}`);
+  }
+
+  const walletAddr = wallet.address.toLowerCase();
+  const type = determineType(
+    { from: tx.from_address, to: tx.to_address, input: tx.input },
+    walletAddr
+  );
+
+  return {
+    wallet_id:          wallet.id,
+    user_id:            wallet.user_id,
+    tx_hash:            tx.hash,
+    type,
+    token_symbol:       network.nativeSymbol,
+    token_address:      null,
+    amount:             parseFloat(tx.value) / 1e18,
+    from_address:       tx.from_address,
+    to_address:         tx.to_address,
+    fee_native:         tx.receipt_gas_used && tx.gas_price
+      ? (parseFloat(tx.receipt_gas_used) * parseFloat(tx.gas_price)) / 1e18
+      : null,
+    fee_usd:            null,
+    price_usd_at_time:  null,
+    value_usd:          null,
+    block_number:       blockNum,
+    confirmed_at:       new Date(timestamp * 1000).toISOString(),
+    raw_data:           tx,
+  };
+}
+
+/**
+ * Fetches native transactions from Moralis as a fallback when Etherscan fails.
+ * Returns normalized tx rows or null if Moralis is not configured or also fails.
+ *
+ * @param {string} walletAddr - Lowercase wallet address.
+ * @param {string} networkKey - e.g. 'ETH'
+ * @param {object} network    - Network config { nativeSymbol, ... }
+ * @param {object} wallet     - Full wallet record.
+ * @param {number} startBlock - Starting block number.
+ * @returns {Promise<object[]|null>}
+ */
+async function fetchMoralisFallback(walletAddr, networkKey, network, wallet, startBlock) {
+  if (!env.moralisApiKey) {
+    logger.warn(`[EVM Sync] Moralis fallback skipped — MORALIS_API_KEY not set`);
+    return null;
+  }
+
+  const chain = MORALIS_CHAIN_IDS[networkKey];
+  if (!chain) {
+    logger.warn(`[EVM Sync] Moralis fallback: no chain mapping for network ${networkKey}`);
+    return null;
+  }
+
+  try {
+    logger.info(`[EVM Sync] Trying Moralis fallback for ${walletAddr} on ${networkKey}`);
+
+    const response = await axios.get(`${MORALIS_API_BASE}/${walletAddr}`, {
+      params: { chain, order: 'ASC', from_block: startBlock || 0 },
+      headers: { 'X-API-Key': env.moralisApiKey },
+      timeout: 15000,
+    });
+
+    const txs = response.data?.result || [];
+    const normalized = [];
+
+    for (const tx of txs) {
+      if (!tx.value || tx.value === '0') continue; // skip zero-value
+      try {
+        normalized.push(normalizeMoralisTx(tx, wallet, network));
+      } catch (normErr) {
+        logger.warn(`[EVM Sync] Moralis normalization skipped tx ${tx.hash}: ${normErr.message}`);
+      }
+    }
+
+    logger.info(`[EVM Sync] Moralis fallback returned ${normalized.length} txs for ${walletAddr}`);
+    return normalized;
+  } catch (err) {
+    logger.warn(`[EVM Sync] Moralis fallback failed for ${walletAddr}: ${err.message}`);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Block-number estimation from timestamp
 // ---------------------------------------------------------------------------
 
@@ -244,8 +350,36 @@ async function syncWallet(wallet) {
 
     if (!isNoTxs) {
       logger.warn(`[EVM Sync] Etherscan txlist error for wallet ${walletId}: ${nativeData.message}`);
-      // TODO: Moralis fallback
-      return { txsFound: 0, lastBlock: 0 };
+
+      const moralisNormalized = await fetchMoralisFallback(
+        walletAddr, networkKey, network, wallet, startBlock
+      );
+
+      if (!moralisNormalized) {
+        return { txsFound: 0, lastBlock: 0 };
+      }
+
+      if (moralisNormalized.length > 0) {
+        const { error: upsertError } = await supabaseAdmin
+          .from('transactions')
+          .upsert(moralisNormalized, { onConflict: 'tx_hash,wallet_id', ignoreDuplicates: false });
+
+        if (upsertError) {
+          logger.error(`[EVM Sync] Supabase upsert (Moralis) failed for wallet ${walletId}: ${upsertError.message}`);
+          throw upsertError;
+        }
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('wallets')
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq('id', walletId);
+
+      if (updateError) {
+        logger.warn(`[EVM Sync] Could not update last_synced_at for wallet ${walletId}: ${updateError.message}`);
+      }
+
+      return { txsFound: moralisNormalized.length, lastBlock: 0 };
     }
   }
 
